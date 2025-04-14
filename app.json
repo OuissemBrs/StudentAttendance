@@ -21,6 +21,17 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "f6a245c3-8552-4618-b37c-545728b0c6ed"
+      }
+    },
+    "android": {
+      "package": "com.itzwsm.Attendance"
     }
   }
 }
