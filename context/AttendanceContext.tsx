@@ -5,6 +5,9 @@ interface Student {
   id: string;
   firstName: string;
   lastName: string;
+  micro1?: number;
+  micro2?: number;
+  notes?: string;
 }
 
 interface Attendance {
@@ -23,8 +26,13 @@ interface Group {
 interface AttendanceContextType {
   groups: Group[];
   addGroup: (name: string) => void;
+  removeGroup: (groupId: string) => void;
+  updateGroupName: (groupId: string, newName: string) => void;
   addStudent: (groupId: string, student: Student) => void;
+  removeStudent: (groupId: string, studentId: string) => void;
   updateStudent: (groupId: string, studentId: string, updatedStudent: Student) => void;
+  updateMicroScores: (groupId: string, studentId: string, micro1?: number, micro2?: number) => void;
+  updateStudentNotes: (groupId: string, studentId: string, notes: string) => void;
   addAttendance: (groupId: string, attendance: Attendance[]) => void;
   updateAttendance: (groupId: string, attendance: Attendance) => void;
   getGroup: (groupId: string) => Group | undefined;
@@ -58,6 +66,7 @@ export function AttendanceProvider({ children }: { children: React.ReactNode }) 
     }
   };
 
+  // Group management
   const addGroup = (name: string) => {
     const newGroup: Group = {
       id: Date.now().toString(),
@@ -70,29 +79,106 @@ export function AttendanceProvider({ children }: { children: React.ReactNode }) 
     saveGroups(updatedGroups);
   };
 
-  const addStudent = (groupId: string, student: Student) => {
-    const updatedGroups = groups.map(group => {
-      if (group.id === groupId) {
-        return {
-          ...group,
-          students: [...group.students, student],
-        };
-      }
-      return group;
-    });
+  const removeGroup = (groupId: string) => {
+    const updatedGroups = groups.filter(group => group.id !== groupId);
     setGroups(updatedGroups);
     saveGroups(updatedGroups);
   };
 
-  const updateStudent = (groupId: string, studentId: string, updatedStudent: Student) => {
+  const updateGroupName = (groupId: string, newName: string) => {
+    const updatedGroups = groups.map(group =>
+      group.id === groupId ? { ...group, name: newName } : group
+    );
+    setGroups(updatedGroups);
+    saveGroups(updatedGroups);
+  };
+
+  // Student management
+  const addStudent = (groupId: string, student: Student) => {
+    const updatedGroups = groups.map(group =>
+      group.id === groupId
+        ? { ...group, students: [...group.students, student] }
+        : group
+    );
+    setGroups(updatedGroups);
+    saveGroups(updatedGroups);
+  };
+
+  const removeStudent = (groupId: string, studentId: string) => {
+    const updatedGroups = groups.map(group =>
+      group.id === groupId
+        ? {
+          ...group,
+          students: group.students.filter(s => s.id !== studentId),
+          attendance: group.attendance.filter(a => a.studentId !== studentId)
+        }
+        : group
+    );
+    setGroups(updatedGroups);
+    saveGroups(updatedGroups);
+  };
+
+  // Micro score updates with validation
+  const updateMicroScores = (groupId: string, studentId: string, micro1?: number, micro2?: number) => {
+    if (
+      (micro1 !== undefined && (micro1 < 0 || micro1 > 20)) ||
+      (micro2 !== undefined && (micro2 < 0 || micro2 > 20))
+    ) {
+      throw new Error('Micro scores must be between 0 and 20');
+    }
+
     const updatedGroups = groups.map(group => {
       if (group.id === groupId) {
-        const updatedStudents = group.students.map(student => {
-          if (student.id === studentId) {
-            return updatedStudent;
-          }
-          return student;
-        });
+        return {
+          ...group,
+          students: group.students.map(student =>
+            student.id === studentId
+              ? { ...student, micro1, micro2 }
+              : student
+          )
+        };
+      }
+      return group;
+    });
+
+    setGroups(updatedGroups);
+    saveGroups(updatedGroups);
+  };
+
+  // Notes modification
+  const updateStudentNotes = (groupId: string, studentId: string, notes: string) => {
+    const updatedGroups = groups.map(group => {
+      if (group.id === groupId) {
+        return {
+          ...group,
+          students: group.students.map(student =>
+            student.id === studentId
+              ? { ...student, notes }
+              : student
+          )
+        };
+      }
+      return group;
+    });
+
+    setGroups(updatedGroups);
+    saveGroups(updatedGroups);
+  };
+
+  // Full student update
+  const updateStudent = (groupId: string, studentId: string, updatedStudent: Student) => {
+    if (
+      (updatedStudent.micro1 !== undefined && (updatedStudent.micro1 < 0 || updatedStudent.micro1 > 20)) ||
+      (updatedStudent.micro2 !== undefined && (updatedStudent.micro2 < 0 || updatedStudent.micro2 > 20))
+    ) {
+      throw new Error('Micro scores must be between 0 and 20');
+    }
+
+    const updatedGroups = groups.map(group => {
+      if (group.id === groupId) {
+        const updatedStudents = group.students.map(student =>
+          student.id === studentId ? updatedStudent : student
+        );
 
         const updatedAttendance = studentId !== updatedStudent.id
           ? group.attendance.map(record =>
@@ -115,17 +201,17 @@ export function AttendanceProvider({ children }: { children: React.ReactNode }) 
     saveGroups(updatedGroups);
   };
 
+  // Attendance management
   const addAttendance = (groupId: string, newAttendance: Attendance[]) => {
     const updatedGroups = groups.map(group => {
       if (group.id === groupId) {
+        const existingDates = new Set(newAttendance.map(a => a.date));
         const filteredAttendance = group.attendance.filter(
-          a => !newAttendance.some(
-            na => na.studentId === a.studentId && na.date === a.date
-          )
+          a => !existingDates.has(a.date)
         );
         return {
           ...group,
-          attendance: [...filteredAttendance, ...newAttendance],
+          attendance: [...filteredAttendance, ...newAttendance]
         };
       }
       return group;
@@ -140,15 +226,13 @@ export function AttendanceProvider({ children }: { children: React.ReactNode }) 
         const filteredAttendance = group.attendance.filter(a =>
           !(a.studentId === updatedAttendance.studentId && a.date === updatedAttendance.date)
         );
-
-        const newAttendance = [...filteredAttendance, updatedAttendance];
-        newAttendance.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
-        return { ...group, attendance: newAttendance };
+        return {
+          ...group,
+          attendance: [...filteredAttendance, updatedAttendance]
+        };
       }
       return group;
     });
-
     setGroups(updatedGroups);
     saveGroups(updatedGroups);
   };
@@ -162,12 +246,18 @@ export function AttendanceProvider({ children }: { children: React.ReactNode }) 
       value={{
         groups,
         addGroup,
+        removeGroup,
+        updateGroupName,
         addStudent,
+        removeStudent,
         updateStudent,
+        updateMicroScores,
+        updateStudentNotes,
         addAttendance,
         updateAttendance,
         getGroup,
-      }}>
+      }}
+    >
       {children}
     </AttendanceContext.Provider>
   );
